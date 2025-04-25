@@ -5,7 +5,10 @@
 body {
     margin: 0;
     padding: 0;
-    background-color: black;
+    background-image: url('../assets/img/background.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     display: flex;
     justify-content: center;
     align-items: center;

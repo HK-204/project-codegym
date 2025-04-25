@@ -1,3 +1,16 @@
+const imageAssets = {
+    player: new Image(),
+    enemy: new Image(),
+    boss: new Image()
+};
+
+imageAssets.player.src = "../assets/img/spaceship.png";
+imageAssets.enemy.src = "../assets/img/enemy-spaceship.png";
+imageAssets.boss.src = "../assets/img/boss-spaceship.png";
+
+const backgroundMusic = new Audio("../assets/backgroundSound/background.mp3");
+backgroundMusic.loop = true;
+
 let sounds;
 
 let isGameOver = false;
@@ -29,6 +42,12 @@ startBtn.addEventListener("click", () => {
     }
 
     enableSound();
+
+    backgroundMusic.volume = 0.5;
+    backgroundMusic.play().catch(err => {
+        console.warn("Không thể phát nhạc nền:", err);
+    });
+
     startGame();
 });
 
@@ -55,17 +74,18 @@ class Player {
         this.maxCharge = 20;
         this.bullets = [];
         this.lastShot = 0;
+        this.continuousShooting = false;
+        this.continuousShootingEnd = 0;
+        this.lastContinuousShot = 0;
+
     }
 
     draw(ctx) {
-        ctx.fillStyle = "white";
-        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.drawImage(imageAssets.player, this.x, this.y, this.size, this.size);
 
-        // Thanh máu
         ctx.fillStyle = "red";
         ctx.fillRect(10, canvas.height - 20, 200 * (this.health / this.maxHealth), 10);
 
-        // Thanh nộ
         ctx.fillStyle = "blue";
         ctx.fillRect(10, canvas.height - 35, 200 * (this.charge / this.maxCharge), 10);
     }
@@ -87,7 +107,13 @@ class Player {
         if (this.x < 0) this.x = 0;
         if (this.x + this.size > canvas.width) this.x = canvas.width - this.size;
 
-        if (timestamp - this.lastShot > 500) {
+        let shootCooldown = 500;
+
+        if (difficulty === "hard"){
+            shootCooldown = 300;
+        }
+
+        if (timestamp - this.lastShot > shootCooldown) {
             this.bullets.push({
                 x: this.x + this.size / 2 - 2,
                 y: this.y,
@@ -102,6 +128,24 @@ class Player {
 
         this.bullets.forEach(b => b.y -= 10);
         this.bullets = this.bullets.filter(b => b.y + b.height > 0);
+
+        const now = Date.now();
+        if (player.continuousShooting && now < player.continuousShootingEnd) {
+            if (now - player.lastContinuousShot >= 250) {
+                this.bullets.push({
+                    x: this.x + this.size / 2 - 2,
+                    y: this.y,
+                    width: 4,
+                    height: 10,
+                    damage: 150
+                });
+                player.lastContinuousShot = now;
+                sounds.shoot.currentTime = 0;
+                sounds.shoot.play();
+            }
+        } else {
+            player.continuousShooting = false;
+        }
     }
 
     useChargeSkill() {
@@ -145,8 +189,11 @@ class Enemy {
     }
 
     draw(ctx) {
-        ctx.fillStyle = "lime";
-        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.save();
+        ctx.translate(this.x + this.size / 2, this.y + this.size / 2);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(imageAssets.enemy, -this.size / 2, -this.size / 2, this.size, this.size);
+        ctx.restore();
     }
 
     update(timestamp) {
@@ -203,15 +250,16 @@ class Boss {
         this.health = health;
         this.maxHealth = health;
         this.bullets = [];
-        this.laserCooldown = false;
         this.laser = null;
     }
 
     draw(ctx) {
-        ctx.fillStyle = "orange";
-        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.save();
+        ctx.translate(this.x + this.size / 2, this.y + this.size / 2);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(imageAssets.boss, -this.size / 2, -this.size / 2, this.size, this.size);
+        ctx.restore();
 
-        // Thanh máu boss
         ctx.fillStyle = "red";
         ctx.fillRect(canvas.width / 2 - 100, 10, 200 * (this.health / this.maxHealth), 10);
     }
@@ -317,8 +365,17 @@ document.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
     keys[key] = true;
 
-    if (key === " "){
+    if (e.key === 'j' || e.key === 'J') {
         player.useChargeSkill();
+    }
+
+    if (e.key === 'k' || e.key === 'K') {
+        if (!player.continuousShooting && player.charge >= player.maxCharge) {
+            player.continuousShooting = true;
+            player.continuousShootingEnd = Date.now() + 5000;
+            player.lastContinuousShot = 0;
+            player.charge = 0;
+        }
     }
 });
 document.addEventListener("keyup", (e) => {
@@ -329,9 +386,18 @@ const player = new Player(200, canvas.height - 60, 30, 4);
 
 let difficulty = "easy";
 
+const bgImg = new Image();
+bgImg.src = "../assets/img/background.jpg";
+
 function gameLoop(timestamp) {
     animationId = requestAnimationFrame(gameLoop);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
     ctx.fillStyle = "white";
     ctx.font = "16px Arial";
     ctx.textAlign = "right";
@@ -363,7 +429,7 @@ function gameLoop(timestamp) {
         });
     });
 
-    enemies.forEach((enemy, ei) => {
+    enemies.forEach((enemy) => {
         player.bullets.forEach((bullet, bi) => {
             if (
                 bullet.x < enemy.x + enemy.size &&
@@ -372,7 +438,8 @@ function gameLoop(timestamp) {
                 bullet.y + bullet.height > enemy.y
             ) {
                 enemy.health -= bullet.damage;
-                player.charge += 1;
+                let gainCharge = difficulty === "hard" ? 2 : 1;
+                player.charge += gainCharge;
                 if (player.charge > player.maxCharge) player.charge = player.maxCharge;
                 player.bullets.splice(bi, 1);
             }
@@ -381,7 +448,7 @@ function gameLoop(timestamp) {
 
     for (let i = enemies.length - 1; i >= 0; i--) {
         if (enemies[i].health <= 0) {
-            explosions.push(new Explosion(enemies[i].x + enemies[i].size / 2, enemies[i].y + enemies[i].size / 2, "lime"));
+            explosions.push(new Explosion(enemies[i].x + enemies[i].size / 2, enemies[i].y + enemies[i].size / 2, "red"));
             sounds.explosionSound.currentTime = 0;
             sounds.explosionSound.play();
             enemies.splice(i, 1);
@@ -405,7 +472,8 @@ function gameLoop(timestamp) {
                 bullet.y + bullet.height > boss.y
             ) {
                 boss.health -= bullet.damage;
-                player.charge += 1;
+                let gainCharge = difficulty === "hard" ? 2 : 1;
+                player.charge += gainCharge;
                 if (player.charge > player.maxCharge) player.charge = player.maxCharge;
                 player.bullets.splice(bi, 1);
             }
@@ -437,11 +505,12 @@ function gameLoop(timestamp) {
         }
 
         if (boss.health <= 0) {
-            explosions.push(new Explosion(boss.x + boss.size / 2, boss.y + boss.size / 2, "orange", 30));
+            explosions.push(new Explosion(boss.x + boss.size / 2, boss.y + boss.size / 2, "red", 30));
             sounds.bossExplode.currentTime = 0;
             sounds.bossExplode.play();
             boss = null;
             score += 1000;
+            player.health = Math.min(player.health + 300, player.maxHealth);
         }
     }
 
