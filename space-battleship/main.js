@@ -11,6 +11,16 @@ imageAssets.boss.src = "../assets/img/boss-spaceship.png";
 const backgroundMusic = new Audio("../assets/backgroundSound/background.mp3");
 backgroundMusic.loop = true;
 
+const powerUpImages = {
+    invincible: new Image(),
+    deathBullet: new Image(),
+    speedBoost: new Image(),
+};
+
+powerUpImages.invincible.src = '../assets/img/invincible.png';
+powerUpImages.deathBullet.src = '../assets/img/deathBullet.png';
+powerUpImages.speedBoost.src = '../assets/img/speedBoost.webp';
+
 let sounds;
 
 let isGameOver = false;
@@ -23,9 +33,22 @@ const canvasHeight = canvas.height;
 
 const startBtn = document.getElementById("startBtn");
 
-let score = 0;
+let score = 10000;
 
 const explosions = [];
+
+let powerUps = [];
+let nextPowerUpScore = 0;
+
+let isInvincible = false;
+let isDeathBullet = false;
+let isSpeedBoost = false;
+
+let powerTimers = {
+    invincible: 0,
+    deathBullet: 0,
+    speedBoost: 0
+};
 
 startBtn.addEventListener("click", () => {
     startBtn.style.display = "none";
@@ -91,15 +114,17 @@ class Player {
     }
 
     update(keys, timestamp) {
+        let moveSpeed = isSpeedBoost ? 10 : 5;
+
         const moveLeft = keys["a"] && !keys["d"];
         const moveRight = keys["d"] && !keys["a"];
         const moveUp = keys["w"] && !keys["s"];
         const moveDown = keys["s"] && !keys["w"];
 
-        if (moveLeft) this.x -= this.speed;
-        if (moveRight) this.x += this.speed;
-        if (moveUp) this.y -= this.speed;
-        if (moveDown) this.y += this.speed;
+        if (moveLeft) this.x -= moveSpeed;
+        if (moveRight) this.x += moveSpeed;
+        if (moveUp) this.y -= moveSpeed;
+        if (moveDown) this.y += moveSpeed;
 
         if (this.y < canvas.height / 2) this.y = canvas.height / 2;
         if (this.y + this.size > canvas.height) this.y = canvas.height - this.size;
@@ -130,7 +155,7 @@ class Player {
         this.bullets = this.bullets.filter(b => b.y + b.height > 0);
 
         const now = Date.now();
-        if (player.continuousShooting && now < player.continuousShootingEnd) {
+        if (this.continuousShooting && now < this.continuousShootingEnd) {
             if (now - player.lastContinuousShot >= 250) {
                 this.bullets.push({
                     x: this.x + this.size / 2 - 2,
@@ -360,6 +385,33 @@ class Explosion {
     }
 }
 
+class PowerUp {
+    constructor(type, x, y) {
+        this.type = type;
+        this.x = x;
+        this.y = y;
+        this.width = 30;
+        this.height = 30;
+        this.speed = 2;
+        this.active = true;
+    }
+
+    update() {
+        this.y += this.speed;
+        if (this.y > canvas.height) this.active = false;
+    }
+
+    draw(ctx) {
+        const img = powerUpImages[this.type];
+        if (img.complete) {
+            ctx.drawImage(img, this.x, this.y, this.width, this.height);
+        } else {
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+        }
+    }
+}
+
 const keys = {};
 document.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
@@ -423,8 +475,10 @@ function gameLoop(timestamp) {
                 bullet.y < player.y + player.size &&
                 bullet.y + bullet.height > player.y
             ) {
-                player.health -= bullet.damage;
-                enemy.bullets.splice(bi, 1);
+                if (!isInvincible){
+                    player.health -= bullet.damage;
+                    enemy.bullets.splice(bi, 1);
+                }
             }
         });
     });
@@ -437,7 +491,12 @@ function gameLoop(timestamp) {
                 bullet.y < enemy.y + enemy.size &&
                 bullet.y + bullet.height > enemy.y
             ) {
-                enemy.health -= bullet.damage;
+                let damageToApply = bullet.damage;
+                if (isDeathBullet) {
+                    damageToApply = 99999;
+                }
+
+                enemy.health -= damageToApply;
                 let gainCharge = difficulty === "hard" ? 2 : 1;
                 player.charge += gainCharge;
                 if (player.charge > player.maxCharge) player.charge = player.maxCharge;
@@ -471,7 +530,12 @@ function gameLoop(timestamp) {
                 bullet.y < boss.y + boss.size &&
                 bullet.y + bullet.height > boss.y
             ) {
-                boss.health -= bullet.damage;
+                let damageToApply = bullet.damage;
+                if (isDeathBullet) {
+                    damageToApply = 99999;
+                }
+
+                boss.health -= damageToApply;
                 let gainCharge = difficulty === "hard" ? 2 : 1;
                 player.charge += gainCharge;
                 if (player.charge > player.maxCharge) player.charge = player.maxCharge;
@@ -486,8 +550,10 @@ function gameLoop(timestamp) {
                 bullet.y < player.y + player.size &&
                 bullet.y + bullet.height > player.y
             ) {
-                player.health -= bullet.damage;
-                boss.bullets.splice(bi, 1);
+                if (!isInvincible){
+                    player.health -= bullet.damage;
+                    boss.bullets.splice(bi, 1);
+                }
             }
         });
 
@@ -500,7 +566,9 @@ function gameLoop(timestamp) {
                 player.y + player.size > l.y;
 
             if (isHit) {
-                player.health -= 2;
+                if (!isInvincible){
+                    player.health -= 2;
+                }
             }
         }
 
@@ -532,10 +600,52 @@ function gameLoop(timestamp) {
         e.draw(ctx);
     });
 
+    powerUps.forEach((powerUp, index) => {
+        if (
+            player.x < powerUp.x + powerUp.width &&
+            player.x + player.size > powerUp.x &&
+            player.y < powerUp.y + powerUp.height &&
+            player.y + player.size > powerUp.y
+        ) {
+            if (powerUp.type === "invincible") {
+                isInvincible = true;
+                powerTimers.invincible = Date.now() + 5000;
+            } else if (powerUp.type === "deathBullet") {
+                isDeathBullet = true;
+                powerTimers.deathBullet = Date.now() + 5000;
+            } else if (powerUp.type === "speedBoost") {
+                isSpeedBoost = true;
+                powerTimers.speedBoost = Date.now() + 10000;
+            }
+
+            powerUps.splice(index, 1);
+        } else {
+            powerUp.update();
+            powerUp.draw(ctx);
+        }
+    });
+
+
+    if (score >= nextPowerUpScore) {
+        const types = ['invincible', 'deathBullet', 'speedBoost'];
+        const randomType = types[Math.floor(Math.random() * types.length)];
+        const powerUp = new PowerUp(randomType, Math.random() * (canvas.width - 30), -30);
+        powerUps.push(powerUp);
+
+        nextPowerUpScore = score + 3000;
+    }
+
     for (let i = explosions.length - 1; i >= 0; i--) {
         if (explosions[i].isDone()) explosions.splice(i, 1);
     }
 
+    if (isInvincible && Date.now() > powerTimers.invincible) isInvincible = false;
+    if (isDeathBullet && Date.now() > powerTimers.deathBullet) isDeathBullet = false;
+    if (isSpeedBoost && Date.now() > powerTimers.speedBoost) isSpeedBoost = false;
+
+    if (isInvincible) ctx.fillText('🛡️ Bất tử', 10, 60);
+    if (isDeathBullet) ctx.fillText('💀 Đạn tử vong', 10, 80);
+    if (isSpeedBoost) ctx.fillText('⚡ Tăng tốc', 10, 100);
 }
 
 const enemies = [];
@@ -594,4 +704,18 @@ function enableSound() {
             console.warn("Không thể preload âm thanh:", err);
         });
     });
+}
+
+function activatePower(type) {
+    const durations = {
+        invincible: 5000,
+        deathBullet: 5000,
+        speedBoost: 10000
+    };
+
+    if (type === 'invincible') isInvincible = true;
+    if (type === 'deathBullet') isDeathBullet = true;
+    if (type === 'speedBoost') isSpeedBoost = true;
+
+    powerTimers[type] = Date.now() + durations[type];
 }
