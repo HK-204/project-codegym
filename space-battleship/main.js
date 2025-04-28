@@ -33,7 +33,7 @@ const canvasHeight = canvas.height;
 
 const startBtn = document.getElementById("startBtn");
 
-let score = 10000;
+let score = 0;
 
 const explosions = [];
 

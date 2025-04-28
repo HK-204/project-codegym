@@ -22,7 +22,7 @@ body {
     width: 600px;
     height: 800px;
     border: 2px solid white;
-    background-color: #111;
+    background-color: rgba(50, 140, 255, 0.8);
 }
 
 #gameCanvas {
@@ -36,8 +36,24 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    padding: 10px 20px;
-    font-size: 18px;
+    padding: 15px 30px;
+    font-size: 20px;
     cursor: pointer;
     z-index: 1;
+    background-color: #43d0f3;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.3s ease, transform 0.2s ease;
 }
+
+#startBtn:hover {
+    background-color: #33c1ff;
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+#startBtn:active {
+    transform: translate(-50%, -50%) scale(1);
+}
+
